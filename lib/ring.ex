@@ -14,15 +14,14 @@ defmodule HashRing do
     this mechanism is what creates the ring-like topology.
   - When nodes are added/removed from the ring, only a small subset of keys must be reassigned
   """
-  defstruct ring: :gb_trees.empty, nodes: []
+  defstruct ring: :gb_trees.empty(), nodes: []
 
   @type t :: %__MODULE__{
-    ring: :gb_trees.tree,
-    nodes: [term()]
-  }
+          ring: :gb_trees.tree(),
+          nodes: [term()]
+        }
 
   @hash_range trunc(:math.pow(2, 32) - 1)
-
 
   @doc """
   Creates a new hash ring structure, with no nodes added yet
@@ -34,7 +33,7 @@ defmodule HashRing do
       ...> HashRing.key_to_node(ring, {:complex, "key"})
       "a"
   """
-  @spec new() :: __MODULE__.t
+  @spec new() :: __MODULE__.t()
   def new(), do: %__MODULE__{}
 
   @doc """
@@ -56,7 +55,7 @@ defmodule HashRing do
       ...> HashRing.key_to_node(ring, :foo)
       "a"
   """
-  @spec new(node(), pos_integer) :: __MODULE__.t
+  @spec new(node(), pos_integer) :: __MODULE__.t()
   def new(node, weight \\ 128) when is_integer(weight) and weight > 0,
     do: add_node(new(), node, weight)
 
@@ -90,18 +89,23 @@ defmodule HashRing do
       ...> HashRing.key_to_node(ring, :foo)
       "b"
   """
-  @spec add_node(__MODULE__.t, term(), pos_integer) :: __MODULE__.t
+  @spec add_node(__MODULE__.t(), term(), pos_integer) :: __MODULE__.t()
   def add_node(ring, node, weight \\ 128)
+
   def add_node(_, node, _weight) when is_binary(node) and byte_size(node) == 0,
-    do: raise ArgumentError, message: "Node keys cannot be empty strings"
+    do: raise(ArgumentError, message: "Node keys cannot be empty strings")
+
   def add_node(%__MODULE__{} = ring, node, weight) when is_integer(weight) and weight > 0 do
     cond do
       Enum.member?(ring.nodes, node) ->
         ring
+
       :else ->
-        ring = %{ring | nodes: [node|ring.nodes]}
+        ring = %{ring | nodes: [node | ring.nodes]}
+
         Enum.reduce(1..weight, ring, fn i, %__MODULE__{ring: r} = acc ->
           n = :erlang.phash2({node, i}, @hash_range)
+
           try do
             %{acc | ring: :gb_trees.insert(n, node, r)}
           catch
@@ -126,11 +130,12 @@ defmodule HashRing do
       ...> HashRing.key_to_node(ring, :foo)
       "b"
   """
-  @spec add_nodes(__MODULE__.t, [term() | {term(), pos_integer}]) :: __MODULE__.t
+  @spec add_nodes(__MODULE__.t(), [term() | {term(), pos_integer}]) :: __MODULE__.t()
   def add_nodes(%__MODULE__{} = ring, nodes) when is_list(nodes) do
     Enum.reduce(nodes, ring, fn
       {node, weight}, acc when is_integer(weight) and weight > 0 ->
         add_node(acc, node, weight)
+
       node, acc ->
         add_node(acc, node)
     end)
@@ -147,14 +152,20 @@ defmodule HashRing do
       ...> HashRing.key_to_node(ring, :foo)
       {:error, {:invalid_ring, :no_nodes}}
   """
-  @spec remove_node(__MODULE__.t, node()) :: __MODULE__.t
+  @spec remove_node(__MODULE__.t(), node()) :: __MODULE__.t()
   def remove_node(%__MODULE__{ring: r} = ring, node) do
     cond do
       Enum.member?(ring.nodes, node) ->
-        r2 = :gb_trees.to_list(r)
-        |> Enum.filter(fn {_key, ^node} -> false; _ -> true end)
-        |> :gb_trees.from_orddict()
+        r2 =
+          :gb_trees.to_list(r)
+          |> Enum.filter(fn
+            {_key, ^node} -> false
+            _ -> true
+          end)
+          |> :gb_trees.from_orddict()
+
         %{ring | nodes: ring.nodes -- [node], ring: r2}
+
       :else ->
         ring
     end
@@ -174,17 +185,21 @@ defmodule HashRing do
       ...> HashRing.key_to_node(ring, :foo)
       {:error, {:invalid_ring, :no_nodes}}
   """
-  @spec key_to_node(__MODULE__.t, term) :: node() | {:error, {:invalid_ring, :no_nodes}}
+  @spec key_to_node(__MODULE__.t(), term) :: node() | {:error, {:invalid_ring, :no_nodes}}
   def key_to_node(%__MODULE__{nodes: []}, _key),
     do: {:error, {:invalid_ring, :no_nodes}}
+
   # Convert atoms to binaries, as phash does not distribute them evenly
   def key_to_node(ring, key) when is_atom(key),
     do: key_to_node(ring, :erlang.term_to_binary(key))
+
   def key_to_node(%__MODULE__{ring: r}, key) do
     hash = :erlang.phash2(key, @hash_range)
+
     case :gb_trees.iterator_from(hash, r) do
-      [{_key, node, _, _}|_] ->
+      [{_key, node, _, _} | _] ->
         node
+
       _ ->
         {_key, node} = :gb_trees.smallest(r)
         node
@@ -209,22 +224,46 @@ defmodule HashRing do
   ...> HashRing.key_to_nodes(ring, :foo, 1)
   {:error, {:invalid_ring, :no_nodes}}
   """
-  @spec key_to_nodes(__MODULE__.t, term, pos_integer) :: [node()] | {:error, {:invalid_ring, :no_nodes}}
+  @spec key_to_nodes(__MODULE__.t(), term, pos_integer) ::
+          [node()] | {:error, {:invalid_ring, :no_nodes}}
   def key_to_nodes(%__MODULE__{nodes: []}, _key, _count),
     do: {:error, {:invalid_ring, :no_nodes}}
+
   def key_to_nodes(%__MODULE__{nodes: nodes, ring: r}, key, count) do
     hash = :erlang.phash2(key, @hash_range)
     count = min(length(nodes), count)
+
     case :gb_trees.iterator_from(hash, r) do
       [{_key, node, _, _} | _] = iter ->
         find_nodes_from_iter(iter, count - 1, [node])
+
       _ ->
         {_key, node} = :gb_trees.smallest(r)
         [node]
     end
   end
 
+  @spec key_to_hash(__MODULE__.t(), term) :: pos_integer
+  def key_to_hash(%__MODULE__{} \\ %__MODULE__{}, key), do: :erlang.phash2(key, @hash_range)
+
+  @spec hash_to_node(__MODULE__.t(), pos_integer) ::
+          [node()] | {:error, {:invalid_ring, :no_nodes}}
+  def hash_to_node(%HashRing{nodes: []}, _hash),
+    do: {:error, {:invalid_ring, :no_nodes}}
+
+  def hash_to_node(%HashRing{ring: r}, hash) do
+    case :gb_trees.iterator_from(hash, r) do
+      [{_key, node, _, _} | _] ->
+        node
+
+      _ ->
+        {_key, node} = :gb_trees.smallest(r)
+        node
+    end
+  end
+
   defp find_nodes_from_iter(_iter, 0, results), do: Enum.reverse(results)
+
   defp find_nodes_from_iter(iter, count, results) do
     case :gb_trees.next(iter) do
       {_key, node, iter} ->
@@ -234,6 +273,7 @@ defmodule HashRing do
           [node | results]
           find_nodes_from_iter(iter, count - 1, [node | results])
         end
+
       _ ->
         results
     end
@@ -243,6 +283,6 @@ end
 defimpl Inspect, for: HashRing do
   def inspect(%HashRing{ring: ring}, _opts) do
     nodes = Enum.uniq(Enum.map(:gb_trees.to_list(ring), fn {_, n} -> n end))
-    "#<Ring#{Kernel.inspect nodes}>"
+    "#<Ring#{Kernel.inspect(nodes)}>"
   end
 end
