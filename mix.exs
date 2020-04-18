@@ -4,8 +4,8 @@ defmodule HashRing.Mixfile do
   def project do
     [
       app: :libring,
-      version: "1.4.0",
-      elixir: "~> 1.3",
+      version: "1.5.0",
+      elixir: "~> 1.6",
       build_embedded: Mix.env == :prod,
       start_permanent: Mix.env == :prod,
       description: "A fast consistent hash ring implementation in Elixir",
@@ -31,9 +31,9 @@ defmodule HashRing.Mixfile do
 
   defp deps do
     [
-     {:ex_doc, "~> 0.13", only: [:docs]},
-     {:benchee, "~> 0.4", only: [:dev]},
-     {:dialyxir, "~> 0.3", only: [:test]},
+     {:ex_doc, "~> 0.21", only: [:docs]},
+     {:benchee, "~> 1.0", only: [:dev]},
+     {:dialyxir, "~> 1.0", only: [:test]},
      {:eqc_ex, "~> 1.4", only: [:test]},
      # Uncomment the following for benchmarks
      # {:hash_ring, github: "voicelayer/hash-ring", only: :dev},
